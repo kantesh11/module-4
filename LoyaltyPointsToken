@@ -1,0 +1,83 @@
+// SPDX-License-Identifier: MIT
+pragma solidity ^0.8.18;
+
+import "@openzeppelin/contracts/token/ERC20/ERC20.sol";
+import "@openzeppelin/contracts/access/Ownable.sol";
+
+contract LoyaltyPointsToken is ERC20, Ownable {
+    event PointsTransferred(address indexed from, address indexed to, uint256 pointsTransferred);
+    event PointsRedeemed(address indexed account, uint256 pointsRedeemed, string reward);
+    event PointsBurned(address indexed account, uint256 pointsBurned);
+
+    mapping(string => uint256) public rewardPointsCosts;
+    mapping(address => uint256) public userPointsBalance;
+
+    string[] public availableRewards;
+
+    constructor(address initialOwner) ERC20("LoyaltyPointsToken", "LPT") Ownable(initialOwner) {
+        initializeRewardPointsCosts();
+    }
+
+    function mintPoints(address to, uint256 points) external onlyOwner {
+        _mint(to, points);
+        userPointsBalance[to] += points;
+    }
+
+    function redeemRewardPoints(string memory rewardName, uint256 points) external {
+        require(rewardPointsCosts[rewardName] > 0, "Invalid reward selected");
+        require(userPointsBalance[msg.sender] >= points, "Insufficient points for redemption");
+        require(rewardPointsCosts[rewardName] == points, "Incorrect points amount for redemption");
+
+        _burn(msg.sender, points);
+        userPointsBalance[msg.sender] -= points;
+        emit PointsRedeemed(msg.sender, points, rewardName);
+    }
+
+    function burnPoints(uint256 points) external {
+        require(userPointsBalance[msg.sender] >= points, "Insufficient points for burning");
+
+        _burn(msg.sender, points);
+        userPointsBalance[msg.sender] -= points;
+        emit PointsBurned(msg.sender, points);
+    }
+
+    function transferPoints(address to, uint256 points) external {
+        require(to != address(0), "Invalid recipient address");
+        require(userPointsBalance[msg.sender] >= points, "Insufficient points for transfer");
+
+        _transfer(msg.sender, to, points);
+        userPointsBalance[msg.sender] -= points;
+        userPointsBalance[to] += points;
+
+        emit PointsTransferred(msg.sender, to, points);
+    }
+
+    function addReward(string calldata rewardName, uint256 cost) external onlyOwner {
+        require(cost > 0, "Reward cost must be greater than zero");
+        require(rewardPointsCosts[rewardName] == 0, "Reward already exists");
+
+        availableRewards.push(rewardName);
+        rewardPointsCosts[rewardName] = cost;
+    }
+
+    function removeReward(string calldata rewardName) external onlyOwner {
+        require(rewardPointsCosts[rewardName] > 0, "Reward does not exist");
+
+        for (uint256 i = 0; i < availableRewards.length; i++) {
+            if (keccak256(bytes(availableRewards[i])) == keccak256(bytes(rewardName))) {
+                availableRewards[i] = availableRewards[availableRewards.length - 1];
+                availableRewards.pop();
+                break;
+            }
+        }
+
+        delete rewardPointsCosts[rewardName];
+    }
+
+    // Function to initialize reward points costs
+    function initializeRewardPointsCosts() internal {
+        rewardPointsCosts["Discount5%"] = 50;
+        rewardPointsCosts["FreeItem"] = 100;
+        rewardPointsCosts["ExclusiveAccess"] = 200;
+    }
+}
